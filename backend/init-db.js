@@ -2,14 +2,15 @@ import * as db from './src/config/db.js';
 
 const setupDatabase = async () => {
   try {
-    console.log("⏳ Initializing BuildGuard AI Database...");
+    console.log("⏳ Updating BuildGuard AI Schema...");
 
-    // 1. Users Table
+    // 1. Users Table (Added full_name)
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username VARCHAR(50) UNIQUE NOT NULL,
         password TEXT NOT NULL,
+        full_name VARCHAR(100), 
         phone_number VARCHAR(15) NOT NULL,
         email VARCHAR(100) UNIQUE NOT NULL,
         role VARCHAR(20) DEFAULT 'MANAGER',
@@ -17,14 +18,15 @@ const setupDatabase = async () => {
       );
     `);
 
-    // 2. Sites Table
+    // 2. Sites Table (Added admin_id to link site to an Owner)
     await db.query(`
       CREATE TABLE IF NOT EXISTS sites (
         id SERIAL PRIMARY KEY,
         site_name VARCHAR(100) NOT NULL,
         location TEXT,
-        status VARCHAR(20) DEFAULT 'Active',
         manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL, 
+        status VARCHAR(20) DEFAULT 'Active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -42,12 +44,11 @@ const setupDatabase = async () => {
       );
     `);
 
-    console.log("🚀 All tables created and linked successfully!");
+    console.log("🚀 Schema Updated Successfully!");
     process.exit(0);
   } catch (err) {
-    console.error("❌ Database Init Error:", err);
+    console.error("❌ Error:", err);
     process.exit(1);
   }
 };
-
 setupDatabase();

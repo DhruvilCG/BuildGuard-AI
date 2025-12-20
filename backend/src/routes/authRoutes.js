@@ -1,12 +1,11 @@
 import express from 'express';
-import { register, login } from '../controllers/authController.js';
+import { register, login, getAdmins } from '../controllers/authController.js';
+import { verifyToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Register Route
 router.post('/register', register);
-
-// Login Route
 router.post('/login', login);
+router.get('/admins', verifyToken, getAdmins); // Dropdown search
 
 export default router;

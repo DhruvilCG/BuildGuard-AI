@@ -1,60 +1,73 @@
-import * as db from '../config/db.js';
+import * as db from "../config/db.js";
+import axios from "axios";
 
-// 1. Add or Update Stock
 export const updateStock = async (req, res) => {
   try {
     const { site_id, item_name, quantity, unit, threshold } = req.body;
 
-    // Pehle check karte hain ki kya ye item pehle se us site par hai?
-    const existingItem = await db.query(
-      "SELECT * FROM inventory WHERE site_id = $1 AND item_name = $2",
-      [site_id, item_name]
+    // inventoryController.js ke andar INSERT query ko aise replace karein:
+    const result = await db.query(
+      `INSERT INTO inventory (site_id, item_name, quantity, unit, threshold)
+   VALUES ($1, $2, $3, $4, $5)
+   ON CONFLICT (site_id, item_name) 
+   DO UPDATE SET 
+     quantity = EXCLUDED.quantity, 
+     updated_at = CURRENT_TIMESTAMP
+   RETURNING *`,
+      [site_id, item_name, quantity, unit, threshold]
     );
 
-    let result;
-    if (existingItem.rows.length > 0) {
-      // Agar hai, toh quantity update karo
-      result = await db.query(
-        "UPDATE inventory SET quantity = $1, threshold = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *",
-        [quantity, threshold, existingItem.rows[0].id]
-      );
-    } else {
-      // Agar naya hai, toh insert karo
-      result = await db.query(
-        "INSERT INTO inventory (site_id, item_name, quantity, unit, threshold) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-        [site_id, item_name, quantity, unit, threshold]
-      );
-    }
-
     const item = result.rows[0];
-    
-    // Low Stock Alert Logic
-    let alert = null;
+
+    // Alert Logic
     if (parseFloat(item.quantity) <= parseFloat(item.threshold)) {
-      alert = `⚠️ ALERT: ${item.item_name} is running low at this site!`;
+      const contacts = await db.query(
+        `SELECT 
+            m.phone_number as mgr_phone, m.full_name as mgr_name,
+            a.phone_number as adm_phone, a.full_name as adm_name,
+            s.site_name
+         FROM sites s
+         LEFT JOIN users m ON s.manager_id = m.id
+         LEFT JOIN users a ON s.admin_id = a.id
+         WHERE s.id = $1`,
+        [site_id]
+      );
+
+      if (contacts.rows.length > 0) {
+        const info = contacts.rows[0];
+        // Trigger Webhook
+        if (process.env.N8N_WEBHOOK_URL) {
+          await axios.post(process.env.N8N_WEBHOOK_URL, {
+            site: info.site_name,
+            item: item_name,
+            qty: quantity,
+            unit: unit,
+            manager: { name: info.mgr_name, phone: info.mgr_phone },
+            admin: { name: info.adm_name, phone: info.adm_phone },
+          });
+          console.log("✅ Webhook triggered for low stock");
+        }
+      }
     }
-
-    res.status(201).json({
-      message: "Stock Updated Successfully",
-      data: item,
-      alert: alert
-    });
-
+    res.status(201).json(item);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to update inventory" });
+    res.status(500).json({ error: "Inventory update failed" });
   }
 };
 
-// 2. Get Inventory for a Specific Site
+
+// Kisi specific site ka pura inventory dekhne ke liye
 export const getInventoryBySite = async (req, res) => {
   try {
     const { site_id } = req.params;
+    
     const result = await db.query(
-      "SELECT * FROM inventory WHERE site_id = $1 ORDER BY item_name ASC",
+      "SELECT * FROM inventory WHERE site_id = $1",
       [site_id]
     );
-    res.json(result.rows);
+
+    res.status(200).json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch inventory" });
