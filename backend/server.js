@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import siteRoutes from './src/routes/siteRoutes.js';
 import authRoutes from './src/routes/authRoutes.js';
+import inventoryRoutes from './src/routes/inventoryRoutes.js' ;
 
 dotenv.config();
 
