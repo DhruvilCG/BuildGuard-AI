@@ -5,7 +5,6 @@ export const updateStock = async (req, res) => {
   try {
     const { site_id, item_name, quantity, unit, threshold } = req.body;
 
-    // inventoryController.js ke andar INSERT query ko aise replace karein:
     const result = await db.query(
       `INSERT INTO inventory (site_id, item_name, quantity, unit, threshold)
    VALUES ($1, $2, $3, $4, $5)
