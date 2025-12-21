@@ -1,4 +1,4 @@
-import * as db from './src/config/db.js';
+import * as db from "./src/config/db.js";
 
 const setupDatabase = async () => {
   try {
@@ -41,6 +41,18 @@ const setupDatabase = async () => {
         unit VARCHAR(20) NOT NULL,
         threshold INTEGER DEFAULT 10,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 4.Vendor Table         
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS vendors (
+        id SERIAL PRIMARY KEY,
+        item_name VARCHAR(50) UNIQUE NOT NULL, -- Ek item ka ek hi master vendor
+        vendor_name VARCHAR(100) NOT NULL,
+        vendor_email VARCHAR(100) NOT NULL,
+        vendor_phone VARCHAR(15),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 

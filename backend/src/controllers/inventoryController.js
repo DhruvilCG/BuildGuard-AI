@@ -7,12 +7,12 @@ export const updateStock = async (req, res) => {
 
     const result = await db.query(
       `INSERT INTO inventory (site_id, item_name, quantity, unit, threshold)
-   VALUES ($1, $2, $3, $4, $5)
-   ON CONFLICT (site_id, item_name) 
-   DO UPDATE SET 
-     quantity = EXCLUDED.quantity, 
-     updated_at = CURRENT_TIMESTAMP
-   RETURNING *`,
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (site_id, item_name) 
+    DO UPDATE SET 
+      quantity = EXCLUDED.quantity, 
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING *`,
       [site_id, item_name, quantity, unit, threshold]
     );
 
@@ -20,8 +20,10 @@ export const updateStock = async (req, res) => {
     let alertSent = false;
     let alertMessage = "Stock updated successfully.";
 
-    // Alert Logic
+    // --- ALERT LOGIC START ---
     if (parseFloat(item.quantity) <= parseFloat(item.threshold)) {
+      
+      // 1. Fetch Site, Manager, and Admin Details
       const contacts = await db.query(
         `SELECT 
             s.site_name,
@@ -34,6 +36,20 @@ export const updateStock = async (req, res) => {
         [site_id]
       );
 
+      // 2. NEW: Fetch Centralized Vendor Details for this specific Item [cite: 2025-12-16]
+      const vendorResult = await db.query(
+        `SELECT vendor_name, vendor_email, vendor_phone 
+         FROM vendors 
+         WHERE item_name = $1 LIMIT 1`,
+        [item_name]
+      );
+
+      const vendor = vendorResult.rows[0] || { 
+        vendor_name: "No Vendor Assigned", 
+        vendor_email: "admin@buildguard.com",
+        vendor_phone: "N/A"
+      };
+
       if (contacts.rows.length > 0) {
         const info = contacts.rows[0];
         alertSent = true;
@@ -41,14 +57,21 @@ export const updateStock = async (req, res) => {
 
         if (process.env.N8N_WEBHOOK_URL) {
           try {
+            // 3. Sending EVERYTHING to n8n (including Vendor data) [cite: 2025-12-16]
             await axios.post(process.env.N8N_WEBHOOK_URL, {
               site: info.site_name,
               item: item_name,
               qty: quantity,
+              unit: unit,
               manager: { name: info.mgr_name, phone: info.mgr_phone },
               admin: { name: info.adm_name, phone: info.adm_phone },
+              vendor: { 
+                name: vendor.vendor_name, 
+                email: vendor.vendor_email, 
+                phone: vendor.vendor_phone 
+              }
             });
-            console.log("✅ Webhook triggered");
+            console.log("✅ Webhook triggered with Vendor info");
           } catch (e) {
             console.error("❌ Webhook failed", e.message);
           }
@@ -56,7 +79,6 @@ export const updateStock = async (req, res) => {
       }
     }
 
-    // Ab hum pura object bhejenge message ke saath
     res.status(201).json({
       message: alertMessage,
       is_low_stock: alertSent,
@@ -67,6 +89,8 @@ export const updateStock = async (req, res) => {
     res.status(500).json({ error: "Inventory update failed" });
   }
 };
+
+// ... baki functions same rahenge
 
 // Kisi specific site ka pura inventory dekhne ke liye
 export const getInventoryBySite = async (req, res) => {
