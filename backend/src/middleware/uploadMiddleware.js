@@ -1,23 +1,19 @@
 import multer from "multer";
-import path from "path";
 
-// Set storage to memory if you plan to upload to Cloudinary/S3, 
-// or disk storage for local testing.
-const storage = multer.memoryStorage(); 
+// Use memory storage to get access to file.buffer
+const storage = multer.memoryStorage();
 
+// Filter to ensure only images and PDFs are uploaded
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = [".jpg", ".jpeg", ".png", ".pdf"];
-  const ext = path.extname(file.originalname).toLowerCase();
-  
-  if (allowedTypes.includes(ext)) {
+  if (file.mimetype.startsWith("image/") || file.mimetype === "application/pdf") {
     cb(null, true);
   } else {
-    cb(new Error("Only Photos and PDFs are supported"), false);
+    cb(new Error("Only images and PDFs are allowed!"), false);
   }
 };
 
 export const upload = multer({ 
-  storage, 
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // Limit: 5MB
 });
