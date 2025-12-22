@@ -125,3 +125,81 @@ export const getInventoryBySite = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch inventory" });
   }
 };
+
+
+/**
+ * Human-in-the-Loop: AI data ko verify karke Final Inventory mein dalna
+ */
+export const approveRawInput = async (req, res) => {
+  // Transaction ke liye pool use karna zaroori hai
+  const client = await db.pool.connect(); 
+  
+  try {
+    const { raw_input_id, corrected_items } = req.body; 
+    const user_id = req.user?.id || null;
+
+    await client.query('BEGIN');
+
+    // 1. Fetch AI extracted data
+    const rawInputResult = await client.query(
+      `SELECT * FROM raw_inputs WHERE id = $1 AND status = 'PENDING'`,
+      [raw_input_id]
+    );
+
+    if (rawInputResult.rows.length === 0) {
+      throw new Error("Bill not found or already processed.");
+    }
+
+    const rawData = rawInputResult.rows[0];
+    const site_id = rawData.site_id;
+    
+    // HITL: Agar manager ne manually correct kiya hai toh wo use karo, nahi toh AI wala
+    const itemsToProcess = corrected_items || rawData.extracted_data.items;
+
+    // 2. Loop through items and update Inventory
+    for (const item of itemsToProcess) {
+      // A. Update/Insert Inventory (INCREMENT Logic)
+      const invUpdate = await client.query(
+        `INSERT INTO inventory (site_id, item_name, quantity, unit)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (site_id, item_name) 
+         DO UPDATE SET 
+            quantity = inventory.quantity + EXCLUDED.quantity, 
+            updated_at = CURRENT_TIMESTAMP
+         RETURNING id, quantity, threshold`,
+        [site_id, item.item_name, item.quantity, item.unit]
+      );
+
+      const updatedItem = invUpdate.rows[0];
+
+      // B. Audit Trail (Filing Readiness)
+      await client.query(
+        `INSERT INTO inventory_transactions (inventory_id, raw_input_id, change_amount, transaction_type, performed_by)
+         VALUES ($1, $2, $3, 'INWARD', $4)`,
+        [updatedItem.id, raw_input_id, item.quantity, user_id]
+      );
+      
+      // Yahan aap Low Stock Alert trigger kar sakte hain agar quantity threshold se niche jaye
+    }
+
+    // 3. Mark bill as APPROVED
+    await client.query(
+      `UPDATE raw_inputs SET status = 'APPROVED', processed_by = $1 WHERE id = $2`,
+      [user_id, raw_input_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(200).json({
+      success: true,
+      message: "Inventory synced and bill filed successfully!"
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("❌ Approval Error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};

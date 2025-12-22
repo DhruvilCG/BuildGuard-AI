@@ -12,4 +12,7 @@ router.post('/update', verifyToken, updateStock);
 // Route: GET /api/inventory/:site_id
 router.get('/:site_id', verifyToken, getInventoryBySite);
 
+
+router.post("/approve", protect, approveRawInput);
+
 export default router;
