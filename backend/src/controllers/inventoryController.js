@@ -22,8 +22,6 @@ export const updateStock = async (req, res) => {
 
     // --- ALERT LOGIC START ---
     if (parseFloat(item.quantity) <= parseFloat(item.threshold)) {
-      
-      // 1. Fetch Site, Manager, and Admin Details
       const contacts = await db.query(
         `SELECT 
             s.site_name,
@@ -36,7 +34,6 @@ export const updateStock = async (req, res) => {
         [site_id]
       );
 
-      // 2. NEW: Fetch Centralized Vendor Details for this specific Item [cite: 2025-12-16]
       const vendorResult = await db.query(
         `SELECT vendor_name, vendor_email, vendor_phone 
          FROM vendors 
@@ -44,20 +41,39 @@ export const updateStock = async (req, res) => {
         [item_name]
       );
 
-      const vendor = vendorResult.rows[0] || { 
-        vendor_name: "No Vendor Assigned", 
+      const vendor = vendorResult.rows[0] || {
+        vendor_name: "No Vendor Assigned",
         vendor_email: "admin@buildguard.com",
-        vendor_phone: "N/A"
+        vendor_phone: "N/A",
       };
 
       if (contacts.rows.length > 0) {
         const info = contacts.rows[0];
+
+        // NEW: Backend se hi Approval Link banayein taaki n8n mein error na aaye [cite: 2025-12-16]
+        const approvalBaseUrl =
+          process.env.N8N_APPROVAL_URL ||
+          "https://uncandied-bernie-finny.ngrok-free.dev/webhook/approve";
+
+        const approvalLink = `${approvalBaseUrl}?site=${encodeURIComponent(
+          info.site_name
+        )}&item=${encodeURIComponent(
+          item_name
+        )}&qty=${quantity}&unit=${unit}&vendor_name=${encodeURIComponent(
+          vendor.vendor_name
+        )}&vendor_email=${encodeURIComponent(
+          vendor.vendor_email
+        )}&manager_name=${encodeURIComponent(
+          info.mgr_name
+        )}&manager_phone=${encodeURIComponent(info.mgr_phone)}`;
+
+        
         alertSent = true;
         alertMessage = `⚠️ LOW STOCK ALERT: ${item_name} is below threshold at ${info.site_name}. Notification sent!`;
 
         if (process.env.N8N_WEBHOOK_URL) {
           try {
-            // 3. Sending EVERYTHING to n8n (including Vendor data) [cite: 2025-12-16]
+            // n8n ko approval_url ke saath saara data bhej rahe hain [cite: 2025-12-16]
             await axios.post(process.env.N8N_WEBHOOK_URL, {
               site: info.site_name,
               item: item_name,
@@ -65,13 +81,14 @@ export const updateStock = async (req, res) => {
               unit: unit,
               manager: { name: info.mgr_name, phone: info.mgr_phone },
               admin: { name: info.adm_name, phone: info.adm_phone },
-              vendor: { 
-                name: vendor.vendor_name, 
-                email: vendor.vendor_email, 
-                phone: vendor.vendor_phone 
-              }
+              vendor: {
+                name: vendor.vendor_name,
+                email: vendor.vendor_email,
+                phone: vendor.vendor_phone,
+              },
+              approval_url: approvalLink,
             });
-            console.log("✅ Webhook triggered with Vendor info");
+            console.log("✅ Webhook triggered with Approval Link");
           } catch (e) {
             console.error("❌ Webhook failed", e.message);
           }
