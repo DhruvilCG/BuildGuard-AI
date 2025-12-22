@@ -1,5 +1,5 @@
 import express from 'express';
-import { updateStock, getInventoryBySite } from '../controllers/inventoryController.js';
+import { updateStock, getInventoryBySite, approveRawInput } from '../controllers/inventoryController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -13,6 +13,6 @@ router.post('/update', verifyToken, updateStock);
 router.get('/:site_id', verifyToken, getInventoryBySite);
 
 
-router.post("/approve", protect, approveRawInput);
+router.post("/approve", verifyToken, approveRawInput);
 
 export default router;
