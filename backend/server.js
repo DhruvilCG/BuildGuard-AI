@@ -4,7 +4,7 @@ import authRoutes from './src/routes/authRoutes.js'; // Aapne file ka naam authR
 import siteRoutes from './src/routes/siteRoutes.js'; 
 import inventoryRoutes from './src/routes/inventoryRoutes.js';
 import vendorRoutes from './src/routes/vendorRoutes.js';
-import aiRoutes from "./src/routes/aiRoutes.js";
+import aiRoutes from "./src/routes/aiRoutes.js  ";
 
 dotenv.config();
 const app = express();
