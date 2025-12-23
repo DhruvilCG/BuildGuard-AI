@@ -131,7 +131,6 @@ export const getInventoryBySite = async (req, res) => {
  * Human-in-the-Loop: AI data ko verify karke Final Inventory mein dalna
  */
 export const approveRawInput = async (req, res) => {
-  // Transaction ke liye pool use karna zaroori hai
   const client = await db.pool.connect(); 
   
   try {
@@ -140,7 +139,7 @@ export const approveRawInput = async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 1. Fetch AI extracted data
+    // 1. Fetch AI extracted data to get site_id
     const rawInputResult = await client.query(
       `SELECT * FROM raw_inputs WHERE id = $1 AND status = 'PENDING'`,
       [raw_input_id]
@@ -153,36 +152,47 @@ export const approveRawInput = async (req, res) => {
     const rawData = rawInputResult.rows[0];
     const site_id = rawData.site_id;
     
-    // HITL: Agar manager ne manually correct kiya hai toh wo use karo, nahi toh AI wala
+    // HITL Logic: itemsToProcess mein ab inventory_id ho sakta hai agar dropdown se select kiya gaya ho
     const itemsToProcess = corrected_items || rawData.extracted_data.items;
 
-    // 2. Loop through items and update Inventory
+    // 2. Loop through items
     for (const item of itemsToProcess) {
-      // A. Update/Insert Inventory (INCREMENT Logic)
-      const invUpdate = await client.query(
-        `INSERT INTO inventory (site_id, item_name, quantity, unit)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (site_id, item_name) 
-         DO UPDATE SET 
-            quantity = inventory.quantity + EXCLUDED.quantity, 
-            updated_at = CURRENT_TIMESTAMP
-         RETURNING id, quantity, threshold`,
-        [site_id, item.item_name, item.quantity, item.unit]
-      );
+      let inventory_id;
 
-      const updatedItem = invUpdate.rows[0];
+      if (item.inventory_id) {
+        // CASE A: Existing Item selected from Dropdown
+        const updateRes = await client.query(
+          `UPDATE inventory 
+           SET quantity = quantity + $1, updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $2 AND site_id = $3
+           RETURNING id`,
+          [item.quantity, item.inventory_id, site_id]
+        );
+        inventory_id = updateRes.rows[0].id;
+      } else {
+        // CASE B: New Item (Upsert logic using item_name)
+        const upsertRes = await client.query(
+          `INSERT INTO inventory (site_id, item_name, quantity, unit)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (site_id, item_name) 
+           DO UPDATE SET 
+              quantity = inventory.quantity + EXCLUDED.quantity, 
+              updated_at = CURRENT_TIMESTAMP
+           RETURNING id`,
+          [site_id, item.item_name, item.quantity, item.unit]
+        );
+        inventory_id = upsertRes.rows[0].id;
+      }
 
-      // B. Audit Trail (Filing Readiness)
+      // 3. Transaction record (Filing Readiness) [cite: 2025-12-16]
       await client.query(
         `INSERT INTO inventory_transactions (inventory_id, raw_input_id, change_amount, transaction_type, performed_by)
          VALUES ($1, $2, $3, 'INWARD', $4)`,
-        [updatedItem.id, raw_input_id, item.quantity, user_id]
+        [inventory_id, raw_input_id, item.quantity, user_id]
       );
-      
-      // Yahan aap Low Stock Alert trigger kar sakte hain agar quantity threshold se niche jaye
     }
 
-    // 3. Mark bill as APPROVED
+    // 4. Mark bill as APPROVED [cite: 2025-12-16]
     await client.query(
       `UPDATE raw_inputs SET status = 'APPROVED', processed_by = $1 WHERE id = $2`,
       [user_id, raw_input_id]

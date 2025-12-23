@@ -54,7 +54,8 @@ const setupDatabase = async () => {
         quantity DECIMAL DEFAULT 0,
         unit VARCHAR(20) NOT NULL,
         threshold INTEGER DEFAULT 10,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(site_id, item_name) -- 🚀 Prevent Duplicate Names per Site
       );
     `);
 
